@@ -1,11 +1,18 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { ArrowLeft } from 'lucide-react'
+import { Button } from '../components/ui/button'
+import { Card } from '../components/ui/card'
 
 export const Route = createFileRoute('/about')({ component: About })
 
 function About() {
-  return <main className="page-wrap assignment-page">
-    <section className="island-shell assignment-panel">
-      <h1>使い方・割り当て条件</h1>
+  return <main id="main-content" className="page-wrap assignment-page">
+    <div className="assignment-heading">
+      <p className="page-eyebrow">ご利用ガイド</p>
+      <h1 id="about-title">使い方・割り当て条件</h1>
+      <p className="assignment-muted">役割分担の作成手順と、割り当て時に適用されるルールを確認できます。</p>
+    </div>
+    <Card className="assignment-panel about-content" role="region" aria-labelledby="about-title">
       <p>登録CSVと大会日を指定して参加者を読み込み、競技卓数・グループ数・スクランブラー数・ランナー数を設定します。初参加・免除・運営専任の条件を確認してから計算してください。</p>
       <p>CSVにはベスト・平均記録がないため、「WCAから自己ベスト・平均記録を取得」で補完できます。WCAの公式自己ベスト平均を1人ずつ最低1秒間隔で取得し、6時間キャッシュします。入力済みの記録は初期設定では保持し、必要に応じて手動でも修正できます。</p>
       <p>平均記録のある参加者を速い順に、同じ実力の人がまとまるようにグループへ振り分けます。公式平均がない人やWCA IDのない人は空欄のまま、CSVの順序で末尾に並びます。複数目隠しのスコアは自動補完の対象外です。</p>
@@ -20,7 +27,9 @@ function About() {
       <p>結果CSVは1人1行、Name列と競技IDの列で出力します。各セルの数字のみは競技グループ、Jはジャッジ、Sはスクランブラー、Rはランナーです。例えば2;J3;S4はグループ2で競技、3でジャッジ、4でスクランブラーを表します。</p>
       <p>「CSVの参加競技をチェック」で元の登録CSVと結果CSVを選ぶと、承認済み参加者の参加競技が一致するか確認できます。スタッフ役割だけのセルは参加競技に数えず、不足・余分な競技や参加者を表示します。登録CSVの名前は「(」より前の英語名を使い、空白をそろえて照合します。同名の行は照合不可として表示します。チェックだけなら大会日の指定や割り当ての計算は不要です。</p>
       <p>競技の同時進行、後続ラウンド、外部スタッフ、WCAへの反映はまだ扱いません。競技が順番に進む第1ラウンドの役割分担を作成します。</p>
-      <Link to="/">役割分担の作成へ戻る</Link>
-    </section>
+      <div className="assignment-actions">
+        <Button asChild variant="outline"><Link to="/"><ArrowLeft aria-hidden="true" />役割分担の作成へ戻る</Link></Button>
+      </div>
+    </Card>
   </main>
 }

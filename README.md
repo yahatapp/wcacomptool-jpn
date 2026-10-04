@@ -2,6 +2,19 @@
 
 WCA大会の登録CSVから、グループ分けとスタッフ役割を作成するローカルWebアプリです。TanStack Startの画面から、FastAPI + Google OR-Tools CP-SATのPython APIを呼び出します。
 
+## 使用ライブラリとUI
+
+- フロントエンド：TanStack Start / Router、React 19、Tailwind CSS 4。
+- UI：shadcn/ui（Button、Input、Card、Switch）、Radix UI（Slot、Switch）、Lucide React（アイコン）。スタイルの結合にはclsx、tailwind-merge、class-variance-authorityを使用します。
+- 開発・ビルド：TypeScript、Vite、TanStack Devtools、Cloudflare Vite Plugin / Wrangler。
+- バックエンド：FastAPI、Uvicorn、OR-Tools、HTTPX、python-multipart。
+
+画面は白背景のライトテーマに固定しています。OSのダークモード設定や、以前保存したテーマ設定には追従しません。色と角丸の共通設定は `web/src/styles.css`、shadcn/uiのコンポーネントは `web/src/components/ui`、追加コンポーネントの設定は `web/components.json` にあります。
+
+既存のReact / Tailwind構成に合わせ、[TanStack Start向けの公式導入手順](https://ui.shadcn.com/docs/installation/tanstack)があるshadcn/uiを採用しています。TanStack自体は画面のデザインを指定しません。Material Design 3の候補として検討した [Material Web](https://github.com/material-components/material-web) は、公式リポジトリでメンテナンスモードと案内されているため、今回は導入していません。
+
+TanStack Devtoolsの画面は開発時も通常は非表示です。必要な場合は `VITE_SHOW_DEVTOOLS=true pnpm --dir web dev` で起動してください。
+
 ## 起動
 
 Nixとdirenvをインストールし、リポジトリルートで実行してください。

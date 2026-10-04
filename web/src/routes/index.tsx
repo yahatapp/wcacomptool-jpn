@@ -1,7 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
+import { Check, Download, FlaskConical, LoaderCircle, Play, Upload } from 'lucide-react'
 import ParticipationCheck from '../components/ParticipationCheck'
+import { Button } from '../components/ui/button'
+import { Card } from '../components/ui/card'
+import { Input } from '../components/ui/input'
 import {
   ApiError, downloadCsv, fetchWcaRecords, importRegistration, mergeWcaRecords,
   normalizedWcaId, roleLabels, solveAssignments,
@@ -31,7 +35,7 @@ function NumberInput({ label, value, onChange, min = 0, max = 100, step = 1 }: {
   max?: number
   step?: number
 }) {
-  return <input
+  return <Input
     className="assignment-input number-input" type="number" aria-label={label}
     min={min} max={max} step={step} value={value ?? ''}
     onChange={(event) => onChange(event.target.value === '' ? null : Number(event.target.value))}
@@ -231,44 +235,58 @@ function AssignmentPage() {
     item.competitor_id === person.competitor_id && item.role !== 'COMPETITOR').length ?? 0)
   const solved = result?.status === 'OPTIMAL' || result?.status === 'FEASIBLE'
 
+  const currentStep = solved ? 3 : imported ? 2 : 1
+
   return (
-    <main className="page-wrap assignment-page">
+    <main id="main-content" className="page-wrap assignment-page">
       <div className="assignment-heading">
-        <p className="island-kicker">Competition staffing</p>
+        <p className="page-eyebrow">大会運営ツール</p>
         <h1>大会の役割分担をつくる</h1>
         <p className="assignment-muted">WCAの参加者CSVを読み込み、グループ・スクランブラー・ジャッジ・ランナーを割り当てます。</p>
       </div>
 
-      <section className="island-shell assignment-panel" aria-labelledby="import-title">
+      <ol className="assignment-steps" aria-label="役割分担の作成手順">
+        {['参加者の読み込み', '大会・参加者の設定', '結果の確認・保存'].map((label, index) => {
+          const step = index + 1
+          return <li key={label} className={step < currentStep ? 'is-complete' : ''}
+            aria-current={step === currentStep ? 'step' : undefined}>
+            <span className="step-number">{step < currentStep ? <Check size={16} aria-hidden="true" /> : step}</span>
+            <span>{label}</span>
+          </li>
+        })}
+      </ol>
+
+      <Card className="assignment-panel" role="region" aria-labelledby="import-title">
         <h2 id="import-title"><span className="step-number">1</span>参加者を読み込む</h2>
         <form onSubmit={(event) => { void importFile(event) }}>
           <fieldset disabled={busy !== null}>
             <div className="assignment-form-grid">
               <label>登録CSV
-                <input ref={fileInput} className="assignment-input" type="file" accept=".csv,text/csv"
+                <Input ref={fileInput} className="assignment-input" type="file" accept=".csv,text/csv"
                   aria-label="登録CSV" onChange={(event) => {
                     setFile(event.target.files?.[0] ?? null); setImported(null); invalidate()
                   }} />
               </label>
               <label>大会日（年齢の計算基準）
-                <input className="assignment-input" type="date" required value={competitionDate}
+                <Input className="assignment-input" type="date" required value={competitionDate}
                   onInput={(event) => {
                     setCompetitionDate(event.currentTarget.value); setImported(null); invalidate()
                   }} />
               </label>
             </div>
             <div className="assignment-actions">
-              <button className="assignment-button" type="submit" disabled={!file || !competitionDate}>
+              <Button type="submit" disabled={!file || !competitionDate}>
+                {busy === 'import' ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Upload aria-hidden="true" />}
                 {busy === 'import' ? '読み込み中…' : 'CSVを読み込む'}
-              </button>
-              <button className="assignment-button secondary" type="button"
-                onClick={() => { void trySample() }}>サンプルで試す</button>
+              </Button>
+              <Button variant="outline" type="button"
+                onClick={() => { void trySample() }}><FlaskConical aria-hidden="true" />サンプルで試す</Button>
               {file && <span className="assignment-muted">{file.name}</span>}
             </div>
           </fieldset>
         </form>
         <p className="assignment-hint">承認済みの登録のみを使用します。メールアドレス・IP・コメントなどは役割分担に取り込みません。</p>
-      </section>
+      </Card>
 
       {error && <Notice danger><p className="whitespace-pre-wrap">{error}</p></Notice>}
 
@@ -278,26 +296,26 @@ function AssignmentPage() {
           <span><strong>{events.length}</strong>競技</span>
           <span>{imported.excluded_count}件の登録を除外</span>
         </div>
-        <Notice><ul>{imported.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></Notice>
+        {imported.warnings.length > 0 && <Notice><ul>{imported.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></Notice>}
 
         <form onSubmit={(event) => { void runSolver(event) }}>
           <fieldset disabled={busy === 'import' || busy === 'solve'}>
-            <section className="island-shell assignment-panel" aria-labelledby="config-title">
+            <Card className="assignment-panel" role="region" aria-labelledby="config-title">
               <h2 id="config-title"><span className="step-number">2</span>大会と参加者を設定する</h2>
               <fieldset disabled={busy === 'records'}>
               <div className="assignment-form-grid">
                 <label>大会名
-                  <input className="assignment-input" required maxLength={200} value={competitionName}
+                  <Input className="assignment-input" required maxLength={200} value={competitionName}
                     onChange={(event) => { setCompetitionName(event.target.value); invalidate() }} />
                 </label>
                 <label>競技卓数
-                  <input className="assignment-input" type="number" min={1} max={100} required
+                  <Input className="assignment-input" type="number" min={1} max={100} required
                     value={numStations} onChange={(event) => {
                       setNumStations(Number(event.target.value)); invalidate()
                     }} />
                 </label>
                 <label>ジャッジを免除する年齢（n歳以下）
-                  <input className="assignment-input" type="number" min={0} max={120} required
+                  <Input className="assignment-input" type="number" min={0} max={120} required
                     value={options.judge_exempt_age} onChange={(event) => {
                       setOptions({ ...options, judge_exempt_age: Number(event.target.value) }); invalidate()
                     }} />
@@ -332,7 +350,7 @@ function AssignmentPage() {
 
               <div className="assignment-section-heading">
                 <h3>参加者の役割条件</h3>
-                <input className="assignment-input search-input" aria-label="参加者検索"
+                <Input className="assignment-input search-input" aria-label="参加者検索"
                   placeholder="名前・WCA IDで検索" value={participantSearch}
                   onChange={(event) => setParticipantSearch(event.target.value)} />
               </div>
@@ -355,16 +373,16 @@ function AssignmentPage() {
 
               <div className="wca-record-controls" aria-label="WCA記録の取得">
                 <div className="assignment-actions">
-                  <button className="assignment-button secondary" type="button"
+                  <Button variant="outline" type="button"
                     disabled={busy !== null || validWcaIds.size === 0}
                     onClick={() => { void getWcaRecords() }}>
                     {busy === 'records' ? 'WCA記録を取得中…' : 'WCAから自己ベスト・平均記録を取得'}
-                  </button>
-                  {busy === 'records' && <button className="assignment-button secondary" type="button"
+                  </Button>
+                  {busy === 'records' && <Button variant="outline" type="button"
                     disabled={recordsStopping} onClick={() => {
                       if (recordsControl.current) recordsControl.current.stop = true
                       setRecordsStopping(true)
-                    }}>{recordsStopping ? '停止待ち…' : '取得を停止する'}</button>}
+                    }}>{recordsStopping ? '停止待ち…' : '取得を停止する'}</Button>}
                   <label className="wca-record-overwrite">
                     <input type="checkbox" checked={overwriteRecords} disabled={busy !== null}
                       onChange={(event) => setOverwriteRecords(event.target.checked)} />
@@ -430,17 +448,18 @@ function AssignmentPage() {
                 </div>
               </details>
               <div className="assignment-actions">
-                <button className="assignment-button" type="submit">
+                <Button type="submit">
+                  {busy === 'solve' ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Play aria-hidden="true" />}
                   {busy === 'solve' ? `役割分担を計算中（最大${options.time_limit_seconds}秒）…` : '役割分担を計算する'}
-                </button>
+                </Button>
               </div>
               <p className="assignment-hint">自分の競技グループとその直前には役割を付けず、同じグループの複数役割を兼任させません。</p>
               </fieldset>
-            </section>
+            </Card>
           </fieldset>
         </form>
 
-        {result && <section className="island-shell assignment-panel" aria-labelledby="result-title">
+        {result && <Card className="assignment-panel" role="region" aria-labelledby="result-title">
           <div className="assignment-section-heading">
             <h2 id="result-title"><span className="step-number">3</span>割り当て結果</h2>
             <span className={`result-status ${solved ? 'success' : ''}`}>
@@ -460,10 +479,10 @@ function AssignmentPage() {
                 <option value="">すべての競技</option>
                 {events.map((event) => <option key={event.event_id} value={event.event_id}>{event.event_name}</option>)}
               </select>
-              <input className="assignment-input search-input" aria-label="結果の参加者検索" placeholder="参加者のいるグループを検索"
+              <Input className="assignment-input search-input" aria-label="結果の参加者検索" placeholder="参加者のいるグループを検索"
                 value={resultSearch} onChange={(event) => setResultSearch(event.target.value)} />
-              <button className="assignment-button secondary" type="button"
-                onClick={() => downloadCsv(result.csv_content, `${competitionName}-assignments.csv`)}>結果CSVをダウンロード</button>
+              <Button variant="outline" type="button"
+                onClick={() => downloadCsv(result.csv_content, `${competitionName}-assignments.csv`)}><Download aria-hidden="true" />結果CSVをダウンロード</Button>
             </div>
             <p className="assignment-hint">結果CSVは1人1行、Name列と競技IDの列で出力します。例：2;J3;S4（グループ2で競技、グループ3でジャッジ、グループ4でスクランブラー）。</p>
             <div className="assignment-table-wrap result-table">
@@ -482,7 +501,7 @@ function AssignmentPage() {
               </table>
             </div>
           </>}
-        </section>}
+        </Card>}
       </>}
       <ParticipationCheck competitionDate={competitionDate} ageLimit={options.judge_exempt_age}
         numStations={numStations} disabled={busy !== null}

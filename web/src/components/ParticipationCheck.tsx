@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import { FileCheck2, LoaderCircle } from 'lucide-react'
+import { Button } from './ui/button'
+import { Card } from './ui/card'
+import { Input } from './ui/input'
+import { Switch } from './ui/switch'
 import { checkCsv, csvCheckLabels } from '../lib/assignments'
 import type { CsvCheckKey, CsvCheckResponse, CsvCheckResult, CsvCheckSelection } from '../lib/assignments'
 
@@ -98,16 +103,16 @@ export default function ParticipationCheck({
     staffing: '各競技・各グループのジャッジ（J）人数が、競技卓数以上か確認します。',
   }
 
-  return <section className="island-shell assignment-panel" aria-labelledby="check-title">
-    <h2 id="check-title">CSVの割り当てをチェック</h2>
+  return <Card className="assignment-panel" role="region" aria-labelledby="check-title">
+    <h2 id="check-title"><FileCheck2 size={22} aria-hidden="true" />CSVの割り当てをチェック</h2>
     <p className="assignment-hint">チェックしたい項目をオンにして、CSVを選んでください。割り当ての計算なしでも使えます。</p>
     <form onSubmit={(event) => { void runCheck(event) }}>
       <fieldset disabled={checking || disabled}>
         <div className="csv-check-options" aria-label="チェック項目">
-          {(Object.keys(csvCheckLabels) as CsvCheckKey[]).map((key) => <label className="csv-check-option" key={key}>
-            <input className="csv-check-switch" type="checkbox" role="switch"
+          {(Object.keys(csvCheckLabels) as CsvCheckKey[]).map((key) => <label className="csv-check-option" key={key} htmlFor={`csv-check-${key}`}>
+            <Switch id={`csv-check-${key}`} disabled={checking || disabled}
               aria-label={csvCheckLabels[key]} checked={selection[key]}
-              onChange={(event) => { setSelection({ ...selection, [key]: event.target.checked }); invalidate() }} />
+              onCheckedChange={(checked) => { setSelection({ ...selection, [key]: checked }); invalidate() }} />
             <span><strong>{csvCheckLabels[key]}</strong><small>{hints[key]}</small></span>
           </label>)}
         </div>
@@ -115,16 +120,16 @@ export default function ParticipationCheck({
           <div className="assignment-form-grid csv-check-settings">
             {selection.age && <>
               <label>大会日（年齢チェック・グループ分けで共通）
-                <input className="assignment-input" type="date" required value={competitionDate}
+                <Input className="assignment-input" type="date" required value={competitionDate}
                   onChange={(event) => onDateChange(event.target.value)} />
               </label>
               <label>役割を確認する年齢（n歳以下・グループ分けで共通）
-                <input className="assignment-input" type="number" min={0} max={120} required
+                <Input className="assignment-input" type="number" min={0} max={120} required
                   value={ageLimit} onChange={(event) => onAgeLimitChange(Number(event.target.value))} />
               </label>
             </>}
             {selection.staffing && <label>競技卓数（グループ分けで共通）
-              <input className="assignment-input" type="number" min={1} max={100} required
+              <Input className="assignment-input" type="number" min={1} max={100} required
                 value={numStations} onChange={(event) => onStationsChange(Number(event.target.value))} />
             </label>}
           </div>
@@ -132,23 +137,24 @@ export default function ParticipationCheck({
         </>}
         <div className="assignment-form-grid csv-check-files">
           <label>照合用の登録CSV（元CSV）{!needsRegistration && '・卓数チェックだけなら不要'}
-            <input className="assignment-input" type="file" accept=".csv,text/csv"
+            <Input className="assignment-input" type="file" accept=".csv,text/csv"
               required={needsRegistration} onChange={(event) => {
                 setRegistrationFile(event.target.files?.[0] ?? null); invalidate()
               }} />
           </label>
           <label>照合用の結果CSV
-            <input className="assignment-input" type="file" accept=".csv,text/csv"
+            <Input className="assignment-input" type="file" accept=".csv,text/csv"
               required onChange={(event) => {
                 setResultFile(event.target.files?.[0] ?? null); invalidate()
               }} />
           </label>
         </div>
         <div className="assignment-actions">
-          <button className="assignment-button" type="submit"
+          <Button type="submit"
             disabled={!hasSelection || !resultFile || (needsRegistration && !registrationFile)}>
+            {checking ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <FileCheck2 aria-hidden="true" />}
             {checking ? 'チェック中…' : '選択した項目をチェック'}
-          </button>
+          </Button>
         </div>
         {!hasSelection && <p className="assignment-hint">チェック項目を1つ以上選択してください。</p>}
       </fieldset>
@@ -162,5 +168,5 @@ export default function ParticipationCheck({
       <p>{result.passed ? '選択したすべてのチェックを通過しました。' : '確認が必要な項目があります。'}</p>
       {result.checks.map((check) => <CheckResult key={check.key} check={check} />)}
     </div>}
-  </section>
+  </Card>
 }
