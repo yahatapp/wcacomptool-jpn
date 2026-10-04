@@ -11,6 +11,7 @@
 		"generate-routes": "tsr generate",
 		"typecheck": "tsc --noEmit",
 		"test": "node --experimental-strip-types --test tests/*.test.mjs",
+		"test:browser": "playwright test",
 		"build": "vite build && pnpm run typecheck",
 		"preview": "pnpm run build && vite preview",
 		"deploy": "pnpm run build && wrangler deploy",
@@ -27,6 +28,7 @@
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"lucide-react": "^1.50.0",
+		"or-tools-wasm": "1.0.0",
 		"react": "^19.2.0",
 		"react-dom": "^19.2.0",
 		"tailwind-merge": "^3.7.0",
@@ -34,6 +36,7 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.26.0",
+		"@playwright/test": "1.63.0",
 		"@tailwindcss/typography": "^0.5.16",
 		"@tanstack/devtools-vite": "latest",
 		"@tanstack/router-cli": "^1.132.0",

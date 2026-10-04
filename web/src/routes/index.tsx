@@ -50,7 +50,9 @@ function Notice({ children, danger = false }: { children: ReactNode; danger?: bo
 function AssignmentPage() {
   const fileInput = useRef<HTMLInputElement>(null)
   const recordsControl = useRef<{ stop: boolean; controller: AbortController } | null>(null)
+  const solverControl = useRef<AbortController | null>(null)
   const [file, setFile] = useState<File | null>(null)
+  const [browserReady, setBrowserReady] = useState(false)
   const [competitionDate, setCompetitionDate] = useState('')
   const [competitionName, setCompetitionName] = useState('')
   const [numStations, setNumStations] = useState(20)
@@ -71,8 +73,12 @@ function AssignmentPage() {
   const [resultEvent, setResultEvent] = useState('')
   const [resultSearch, setResultSearch] = useState('')
 
-  useEffect(() => () => {
-    recordsControl.current?.controller.abort()
+  useEffect(() => {
+    setBrowserReady(true)
+    return () => {
+      recordsControl.current?.controller.abort()
+      solverControl.current?.abort()
+    }
   }, [])
 
   function invalidate() { setResult(null); setError('') }
@@ -139,15 +145,19 @@ function AssignmentPage() {
   async function runSolver(event: FormEvent) {
     if (busy !== null) { event.preventDefault(); return }
     event.preventDefault(); setBusy('solve'); setError(''); setResult(null)
+    const controller = new AbortController()
+    solverControl.current = controller
     try {
       const response = await solveAssignments({
         competition_name: competitionName, competition_date: competitionDate,
         num_stations: numStations, events, competitors, options,
-      })
+      }, controller.signal)
       setResult(response)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : '役割分担の計算に失敗しました。')
-    } finally { setBusy(null) }
+      if (!(cause instanceof Error && cause.name === 'AbortError')) {
+        setError(cause instanceof Error ? cause.message : '役割分担の計算に失敗しました。')
+      }
+    } finally { solverControl.current = null; setBusy(null) }
   }
 
   async function getWcaRecords() {
@@ -167,7 +177,7 @@ function AssignmentPage() {
     })
     let consecutiveFailures = 0
     try {
-      // One person request at a time. The API enforces spacing even across tabs.
+      // The browser client serializes same-origin tabs and enforces request spacing.
       for (const [id, people] of peopleByWcaId) {
         if (control.stop || control.controller.signal.aborted) break
         setRecordProgress((progress) => progress && { ...progress, currentId: id })
@@ -234,7 +244,6 @@ function AssignmentPage() {
   const roleCounts = competitors.map((person) => result?.assignments.filter((item) =>
     item.competitor_id === person.competitor_id && item.role !== 'COMPETITOR').length ?? 0)
   const solved = result?.status === 'OPTIMAL' || result?.status === 'FEASIBLE'
-
   const currentStep = solved ? 3 : imported ? 2 : 1
 
   return (
@@ -243,6 +252,7 @@ function AssignmentPage() {
         <p className="page-eyebrow">大会運営ツール</p>
         <h1>大会の役割分担をつくる</h1>
         <p className="assignment-muted">WCAの参加者CSVを読み込み、グループ・スクランブラー・ジャッジ・ランナーを割り当てます。</p>
+        <p className="assignment-hint">CSVの読み込み・チェック・役割分担の計算は、このブラウザ内で行います。</p>
       </div>
 
       <ol className="assignment-steps" aria-label="役割分担の作成手順">
@@ -259,7 +269,7 @@ function AssignmentPage() {
       <Card className="assignment-panel" role="region" aria-labelledby="import-title">
         <h2 id="import-title"><span className="step-number">1</span>参加者を読み込む</h2>
         <form onSubmit={(event) => { void importFile(event) }}>
-          <fieldset disabled={busy !== null}>
+          <fieldset disabled={busy !== null || !browserReady}>
             <div className="assignment-form-grid">
               <label>登録CSV
                 <Input ref={fileInput} className="assignment-input" type="file" accept=".csv,text/csv"
@@ -450,7 +460,7 @@ function AssignmentPage() {
               <div className="assignment-actions">
                 <Button type="submit">
                   {busy === 'solve' ? <LoaderCircle className="animate-spin" aria-hidden="true" /> : <Play aria-hidden="true" />}
-                  {busy === 'solve' ? `役割分担を計算中（最大${options.time_limit_seconds}秒）…` : '役割分担を計算する'}
+                  {busy === 'solve' ? 'ブラウザ内で計算中…' : '役割分担を計算する'}
                 </Button>
               </div>
               <p className="assignment-hint">自分の競技グループとその直前には役割を付けず、同じグループの複数役割を兼任させません。</p>
@@ -458,6 +468,12 @@ function AssignmentPage() {
             </Card>
           </fieldset>
         </form>
+
+        {busy === 'solve' && <div className="assignment-actions" role="status">
+          <p className="assignment-hint">計算中です。初回は計算エンジンの読み込みにも時間がかかります。</p>
+          <Button variant="outline" type="button"
+            onClick={() => solverControl.current?.abort()}>計算を中止する</Button>
+        </div>}
 
         {result && <Card className="assignment-panel" role="region" aria-labelledby="result-title">
           <div className="assignment-section-heading">

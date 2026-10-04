@@ -11,6 +11,8 @@ dist-ssr
 .vinxi
 __unconfig*
 todos.json
+test-results/
+playwright-report/
 
 .dev.vars*
 !.dev.vars.example

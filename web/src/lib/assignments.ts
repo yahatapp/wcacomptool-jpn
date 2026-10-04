@@ -1,3 +1,7 @@
+import type { Role } from './roles.ts'
+export { roleLabels } from './roles.ts'
+export type { Role } from './roles.ts'
+
 export type PersonalRecord = {
   best_time: number | null
   average_time: number | null
@@ -48,15 +52,6 @@ export type SolveRequest = {
   events: EventConfig[]
   options: SolverOptions
 }
-
-export const roleLabels = {
-  COMPETITOR: '競技者',
-  SCRAMBLER: 'スクランブラー',
-  JUDGE: 'ジャッジ',
-  RUNNER: 'ランナー',
-} as const
-
-export type Role = keyof typeof roleLabels
 
 export type Assignment = {
   competitor_id: string
@@ -156,58 +151,37 @@ export class ApiError extends Error {
   }
 }
 
-async function readResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    const error: unknown = await response.json().catch(() => null)
-    const detail = error && typeof error === 'object' && 'detail' in error
-      ? error.detail : undefined
-    if (typeof detail === 'string') throw new ApiError(detail, response.status)
-    if (Array.isArray(detail)) {
-      throw new ApiError(detail.map((item: { loc?: (string | number)[]; msg: string }) =>
-        `${item.loc?.slice(1).join(' / ') ?? ''}: ${item.msg}`,
-      ).join('\n'), response.status)
-    }
-    throw new ApiError('APIに接続できませんでした。WebとPython APIを一緒に起動してください。', response.status)
-  }
-  return response.json() as Promise<T>
-}
-
 export async function importRegistration(file: File, competitionDate: string) {
-  const data = new FormData()
-  data.append('file', file)
-  data.append('competition_date', competitionDate)
-  return readResponse<ImportResponse>(await fetch('/api/import', { method: 'POST', body: data }))
+  const { readCsvFile, importRegistrationBytes } = await import('./registration.ts')
+  return importRegistrationBytes(await readCsvFile(file), file.name, competitionDate)
 }
 
-export async function solveAssignments(data: SolveRequest) {
-  return readResponse<SolveResponse>(await fetch('/api/solve', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
-  }))
+export async function solveAssignments(data: SolveRequest, signal?: AbortSignal) {
+  const { solveInBrowser } = await import('./browser-solver.ts')
+  return solveInBrowser(data, signal)
 }
 
 export async function checkParticipation(registrationFile: File, resultFile: File) {
-  const data = new FormData()
-  data.append('registration_file', registrationFile)
-  data.append('result_file', resultFile)
-  return readResponse<ParticipationCheckResponse>(await fetch('/api/check-participation', {
-    method: 'POST', body: data,
-  }))
+  const { readCsvFile } = await import('./registration.ts')
+  const { checkParticipationBytes } = await import('./result-csv.ts')
+  const [registered, result] = await Promise.all([readCsvFile(registrationFile), readCsvFile(resultFile)])
+  return checkParticipationBytes(registered, result)
 }
 
 export async function checkCsv(
   registrationFile: File | null, resultFile: File, options: CsvCheckOptions,
 ) {
-  const data = new FormData()
-  if (registrationFile) data.append('registration_file', registrationFile)
-  data.append('result_file', resultFile)
-  data.append('options', JSON.stringify(options))
-  return readResponse<CsvCheckResponse>(await fetch('/api/check-csv', {
-    method: 'POST', body: data,
-  }))
+  const { readCsvFile } = await import('./registration.ts')
+  const { checkCsvBytes } = await import('./result-csv.ts')
+  const [registered, result] = await Promise.all([
+    registrationFile ? readCsvFile(registrationFile) : null, readCsvFile(resultFile),
+  ])
+  return checkCsvBytes(registered, result, options)
 }
 
 export async function fetchWcaRecords(wcaId: string, signal: AbortSignal) {
-  return readResponse<WcaRecordsResponse>(await fetch(`/api/wca/records/${encodeURIComponent(wcaId)}`, { signal }))
+  const { fetchRecords } = await import('./wca-records.ts')
+  return fetchRecords(wcaId, signal)
 }
 
 export function normalizedWcaId(person: Competitor): string | null {

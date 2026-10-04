@@ -6,20 +6,27 @@ import { tanstackStart } from '@tanstack/react-start/plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { cloudflare } from '@cloudflare/vite-plugin'
+import { cpSatAssets } from './build/cp-sat-assets.ts'
 
 const config = defineConfig({
+  cacheDir: process.env.WCA_TEST_CACHE_DIR || 'node_modules/.vite',
   resolve: { tsconfigPaths: true },
+  optimizeDeps: { exclude: ['or-tools-wasm'] },
+  worker: { format: 'es', plugins: () => [cpSatAssets()] },
   server: {
-    proxy: {
-      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true, timeout: 150_000 },
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
   preview: {
-    proxy: {
-      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true, timeout: 150_000 },
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
   plugins: [
+    cpSatAssets(),
     devtools(),
     cloudflare({ viteEnvironment: { name: 'ssr' } }),
     tailwindcss(),
