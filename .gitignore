@@ -1,0 +1,10 @@
+.direnv/
+.pnpm-store/
+result
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.cache/

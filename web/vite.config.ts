@@ -1,0 +1,31 @@
+import { defineConfig } from 'vite'
+import { devtools } from '@tanstack/devtools-vite'
+
+import { tanstackStart } from '@tanstack/react-start/plugin/vite'
+
+import viteReact from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
+import { cloudflare } from '@cloudflare/vite-plugin'
+
+const config = defineConfig({
+  resolve: { tsconfigPaths: true },
+  server: {
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true, timeout: 150_000 },
+    },
+  },
+  preview: {
+    proxy: {
+      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true, timeout: 150_000 },
+    },
+  },
+  plugins: [
+    devtools(),
+    cloudflare({ viteEnvironment: { name: 'ssr' } }),
+    tailwindcss(),
+    tanstackStart(),
+    viteReact(),
+  ],
+})
+
+export default config

@@ -1,0 +1,13 @@
+Status,Name,Country,WCA ID,Birth Date,Gender,333,444,Registration Status,Registrant Id
+a,サンプル参加者01,Japan,TEST0001,2000-01-01,m,1,1,accepted,1
+a,サンプル参加者02,Japan,TEST0002,2000-01-01,f,1,1,accepted,2
+a,サンプル参加者03,Japan,TEST0003,2000-01-01,m,1,1,accepted,3
+a,サンプル参加者04,Japan,TEST0004,2000-01-01,f,1,1,accepted,4
+a,サンプル参加者05,Japan,TEST0005,2000-01-01,m,1,1,accepted,5
+a,サンプル参加者06,Japan,TEST0006,2000-01-01,f,1,1,accepted,6
+a,サンプル参加者07,Japan,TEST0007,2000-01-01,m,1,1,accepted,7
+a,サンプル参加者08,Japan,TEST0008,2000-01-01,f,1,1,accepted,8
+a,サンプル参加者09,Japan,TEST0009,2000-01-01,m,1,1,accepted,9
+a,サンプル参加者10,Japan,TEST0010,2000-01-01,f,1,1,accepted,10
+a,サンプル参加者11,Japan,TEST0011,2000-01-01,m,1,1,accepted,11
+a,サンプル参加者12,Japan,TEST0012,2000-01-01,f,1,1,accepted,12
