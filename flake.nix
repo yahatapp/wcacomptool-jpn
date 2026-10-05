@@ -23,7 +23,12 @@
             uv
           ];
 
-          env.UV_PYTHON_DOWNLOADS = "never";
+          env = {
+            UV_PYTHON_DOWNLOADS = "never";
+          } // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            # NumPy and OR-Tools wheels need the C++ runtime under Nix's Python.
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
+          };
         };
       }
     );
