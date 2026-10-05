@@ -27,10 +27,10 @@ function CheckResult({ check }: { check: CsvCheckResult }) {
     </div>
     {check.key === 'staffing' ? <div className="assignment-table-wrap">
       <table className="assignment-table">
-        <thead><tr><th>競技 / グループ</th><th>卓数</th><th>ジャッジ（J）</th><th>スクランブラー（S）</th><th>ランナー（R）</th><th>判定</th></tr></thead>
+        <thead><tr><th>競技 / グループ</th><th>競技者</th><th>必要ジャッジ人数</th><th>ジャッジ（J）</th><th>スクランブラー（S）</th><th>ランナー（R）</th><th>判定</th></tr></thead>
         <tbody>{check.groups.map((group) => <tr key={`${group.event_id}-${group.group}`}>
           <th scope="row">{group.event_id} G{group.group}</th>
-          <td>{group.required_count}卓</td><td>{group.judge_count}人</td>
+          <td>{group.competitor_count}人</td><td>{group.required_count}人</td><td>{group.judge_count}人</td>
           <td>{group.scrambler_count}人</td><td>{group.runner_count}人</td>
           <td>{group.passed ? 'OK' : `ジャッジが${group.required_count - group.judge_count}人不足`}</td>
         </tr>)}</tbody>
@@ -100,7 +100,7 @@ export default function ParticipationCheck({
     participation: '元の登録CSVの参加競技と、結果CSVの数字のみの項目を比較します。',
     newcomers: '登録CSVのWCA IDが空欄の人に、J・S・Rが割り当たっていないか確認します。',
     age: `${ageLimit}歳以下の人に、J・S・Rが割り当たっていないか確認します。年齢は生年月日と大会日から計算します。`,
-    staffing: '各競技・各グループのジャッジ（J）人数が、競技卓数以上か確認します。',
+    staffing: '各競技・各グループのジャッジ（J）人数が、競技者数と競技卓数の小さい方以上か確認します。',
   }
 
   return <Card className="assignment-panel" role="region" aria-labelledby="check-title">

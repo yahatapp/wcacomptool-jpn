@@ -71,6 +71,35 @@ test('missing averages preserve input order and warn about waiting seats', async
   assert.ok(result.warnings.some((m) => m.includes('待機席')))
 })
 
+test('judge counts use the smaller of each group size and station count', async () => {
+  for (const stations of [2, 3, 4]) {
+    const request = requestData(); request.num_stations = stations; request.competitors.pop()
+    const result = await solve(request)
+    assert.ok(['OPTIMAL', 'FEASIBLE'].includes(result.status), JSON.stringify(result))
+    assert.deepEqual(validateAssignments(request, result.assignments), [])
+    for (const [index, size] of [3, 3, 3, 2].entries()) {
+      const assignments = result.assignments.filter((item) => item.group === index + 1)
+      assert.equal(assignments.filter((item) => item.role === 'COMPETITOR').length, size)
+      assert.equal(assignments.filter((item) => item.role === 'JUDGE').length, Math.min(size, stations))
+      assert.equal(assignments.filter((item) => item.role === 'SCRAMBLER').length, 1)
+    }
+    assert.ok(validateAssignments(request, result.assignments.filter((item) => item.role !== 'JUDGE')).some((m) => m.includes('ジャッジの必要人数')))
+  }
+})
+
+test('the station cap permits previously understaffed groups and rejects excess generated judges', async () => {
+  const request = requestData(); request.events[0].num_groups = 3
+  const result = await solve(request)
+  assert.ok(['OPTIMAL', 'FEASIBLE'].includes(result.status), JSON.stringify(result))
+  for (let group = 1; group <= 3; group++) {
+    assert.equal(result.assignments.filter((item) => item.group === group && item.role === 'COMPETITOR').length, 4)
+    assert.equal(result.assignments.filter((item) => item.group === group && item.role === 'JUDGE').length, 3)
+  }
+  const occupied = new Set(result.assignments.filter((item) => item.group === 3).map((item) => item.competitor_id))
+  const extra = result.assignments.find((item) => item.role === 'COMPETITOR' && item.group < 3 && !occupied.has(item.competitor_id))
+  assert.deepEqual(validateAssignments(request, [...result.assignments, { ...extra, group: 3, role: 'JUDGE' }]), ['333 G3: ジャッジの必要人数を満たしていません。'])
+})
+
 test('independent validation detects omitted roles, duplicates, altered groups and age exemptions', async () => {
   const request = requestData(), result = await solve(request)
   assert.deepEqual(validateAssignments(request, result.assignments), [])

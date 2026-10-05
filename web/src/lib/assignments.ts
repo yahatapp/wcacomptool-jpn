@@ -131,6 +131,7 @@ export type CsvCheckResult = {
   groups: {
     event_id: string
     group: number
+    competitor_count: number
     judge_count: number
     scrambler_count: number
     runner_count: number

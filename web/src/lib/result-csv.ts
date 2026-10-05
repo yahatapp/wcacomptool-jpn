@@ -34,7 +34,7 @@ export function exportCsv(request: SolveRequest, assignments: Assignment[]): str
 }
 
 type RegistrationEntry = { name: string; events: Set<string>; wcaId?: string; birthDate?: string }
-type ResultEntry = { name: string; events: Set<string>; roles: CsvCheckIssue['assignments']; groups: Map<string, number> }
+type ResultEntry = { name: string; events: Set<string>; roles: CsvCheckIssue['assignments']; groups: Map<string, number>; competitorGroups: Map<string, number> }
 
 function readRegistrations(content: Uint8Array, includeWithoutEvents = false): RegistrationEntry[] {
   const { columns, rows } = readCsvRows(content)
@@ -69,10 +69,11 @@ function readResults(content: Uint8Array) {
     const name = row.Name.trim()
     if (!name) throw new Error(`結果CSVの${index + 2}行目: 名前は必須です。`)
     const events = new Set<string>(), roles: ResultEntry['roles'] = [], groups = new Map<string, number>()
+    const competitorGroups = new Map<string, number>()
     for (const eventId of eventIds) {
       const cell = row[eventId].trim()
       if (!cell) continue
-      let competitorGroups = 0
+      let competitorGroupCount = 0
       for (const token of cell.split(';')) {
         const match = /^([JSR]?)([1-9][0-9]*)$/.exec(token.trim())
         if (!match) throw new Error(`結果CSVの${index + 2}行目（${name}）、${eventId}列: 数字またはJ・S・Rと数字をセミコロンで区切ってください。`)
@@ -80,11 +81,11 @@ function readResults(content: Uint8Array) {
         if (match[2].length > 3 || group > 100) throw new Error(`結果CSVの${index + 2}行目（${name}）、${eventId}列: グループ番号は1〜100で指定してください。`)
         groups.set(eventId, Math.max(groups.get(eventId) ?? 0, group))
         if (match[1]) roles.push({ event_id: eventId, group, role: match[1] as 'J' | 'S' | 'R' })
-        else { competitorGroups++; events.add(eventId) }
+        else { competitorGroupCount++; events.add(eventId); competitorGroups.set(eventId, group) }
       }
-      if (competitorGroups > 1) throw new Error(`結果CSVの${index + 2}行目（${name}）、${eventId}列: 競技グループが複数あります。数字のみの項目は1つにしてください。`)
+      if (competitorGroupCount > 1) throw new Error(`結果CSVの${index + 2}行目（${name}）、${eventId}列: 競技グループが複数あります。数字のみの項目は1つにしてください。`)
     }
-    participants.push({ name, events, roles, groups })
+    participants.push({ name, events, roles, groups, competitorGroups })
   }
   return { eventIds, participants }
 }
@@ -153,22 +154,26 @@ function checkPersonRoles(check: 'age' | 'newcomers', registrations: Registratio
 
 function checkStaffing(eventIds: string[], results: ResultEntry[], stations: number): CsvCheckResult {
   const maxGroups = new Map<string, number>(), counts = new Map<string, Set<string>>()
+  function countPerson(eventId: string, group: number, role: string, name: string) {
+    const roleKey = key(eventId, group, role), people = counts.get(roleKey) ?? new Set<string>()
+    people.add(normalizeName(name)); counts.set(roleKey, people)
+  }
   for (const person of results) {
     for (const [event, group] of person.groups) maxGroups.set(event, Math.max(maxGroups.get(event) ?? 0, group))
-    for (const role of person.roles) {
-      const roleKey = key(role.event_id, role.group, role.role), people = counts.get(roleKey) ?? new Set<string>()
-      people.add(normalizeName(person.name)); counts.set(roleKey, people)
-    }
+    for (const [event, group] of person.competitorGroups) countPerson(event, group, '', person.name)
+    for (const role of person.roles) countPerson(role.event_id, role.group, role.role, person.name)
   }
   const issues: CsvCheckIssue[] = [], groups: CsvCheckResult['groups'] = []
   for (const eventId of eventIds) {
     for (let group = 1; group <= Math.max(maxGroups.get(eventId) ?? 0, 1); group++) {
+      const competitors = counts.get(key(eventId, group, ''))?.size ?? 0
       const judges = counts.get(key(eventId, group, 'J'))?.size ?? 0
-      groups.push({ event_id: eventId, group, judge_count: judges,
+      const required = Math.min(competitors, stations)
+      groups.push({ event_id: eventId, group, competitor_count: competitors, judge_count: judges,
         scrambler_count: counts.get(key(eventId, group, 'S'))?.size ?? 0, runner_count: counts.get(key(eventId, group, 'R'))?.size ?? 0,
-        required_count: stations, passed: judges >= stations })
-      if (judges < stations) issues.push(issue({ kind: 'staffing_shortage', name: `${eventId} G${group}`, event_id: eventId, group,
-        required_count: stations, actual_count: judges, message: `ジャッジ${judges}人 / 競技卓${stations}卓 （${stations - judges}人不足）。` }))
+        required_count: required, passed: judges >= required })
+      if (judges < required) issues.push(issue({ kind: 'staffing_shortage', name: `${eventId} G${group}`, event_id: eventId, group,
+        required_count: required, actual_count: judges, message: `ジャッジ${judges}人 / 必要${required}人 （競技者${competitors}人・競技卓${stations}卓、${required - judges}人不足）。` }))
     }
   }
   return { key: 'staffing', passed: !issues.length, checked_count: groups.length, issues, groups }

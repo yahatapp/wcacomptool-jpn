@@ -15,6 +15,7 @@ test('WASM objective and assignments agree with the independent Python reference
     (r) => { r.options.balance_weight = 0 },
     (r) => { r.events[0].use_runners = true; r.events[0].num_runners_per_group = 1; r.competitors[0].is_staff = true; r.competitors[1].age = 12; r.competitors[4].is_newcomer = true; r.competitors[7].is_judge_exempt = true },
     (r) => { for (const p of r.competitors) p.events['333'].average_time = null },
+    (r) => { r.num_stations = 2; r.competitors.pop() },
     (r) => { r.events.push({ ...r.events[0], event_id: '444' }); for (const p of r.competitors) p.events['444'] = { best_time: null, average_time: 100 + Number(p.competitor_id) } },
   ]) {
     const request = requestData(); change(request)

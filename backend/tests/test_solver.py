@@ -108,10 +108,51 @@ def test_no_candidates_is_infeasible_not_false_success(request_data):
 
 
 def test_overlapping_candidates_cannot_fill_multiple_roles(request_data):
-    request_data.events[0].num_groups = 3
+    request_data.events[0].num_groups = 2
     result = solve(request_data)
     assert result.status == "INFEASIBLE"
     assert any("兼任不可" in message for message in result.diagnostics)
+
+
+@pytest.mark.parametrize("num_stations", [2, 3, 4])
+def test_judge_count_is_capped_by_stations_for_each_group(request_data, num_stations):
+    request_data.num_stations = num_stations
+    request_data.competitors.pop()
+    result = solve(request_data)
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    assert not validate_assignments(request_data, result.assignments)
+    counts = Counter((item.group, item.role) for item in result.assignments)
+    for group, size in enumerate([3, 3, 3, 2], start=1):
+        assert counts[group, Role.COMPETITOR] == size
+        assert counts[group, Role.JUDGE] == min(size, num_stations)
+        assert counts[group, Role.SCRAMBLER] == 1
+    without_judges = [item for item in result.assignments if item.role != Role.JUDGE]
+    assert any("ジャッジの必要人数" in error for error in validate_assignments(
+        request_data, without_judges
+    ))
+
+
+def test_station_cap_allows_groups_that_previously_lacked_staff(request_data):
+    request_data.events[0].num_groups = 3
+    result = solve(request_data)
+    assert result.status in ("OPTIMAL", "FEASIBLE")
+    counts = Counter((item.group, item.role) for item in result.assignments)
+    for group in range(1, 4):
+        assert counts[group, Role.COMPETITOR] == 4
+        assert counts[group, Role.JUDGE] == 3
+
+
+def test_validator_rejects_judges_above_the_station_cap(request_data):
+    request_data.num_stations = 2
+    result = solve(request_data)
+    occupied = {item.competitor_id for item in result.assignments if item.group == 1}
+    extra_judge = next(
+        item.model_copy(update={"group": 1, "role": Role.JUDGE})
+        for item in result.assignments
+        if item.role == Role.COMPETITOR and item.group > 2 and item.competitor_id not in occupied
+    )
+    errors = validate_assignments(request_data, result.assignments + [extra_judge])
+    assert errors == ["333 G1: ジャッジの必要人数を満たしていません。"]
 
 
 def test_records_optional_and_waiting_seats_reported(request_data):
@@ -130,3 +171,16 @@ def test_validator_rejects_missing_roles_and_duplicate_assignments(request_data)
     assert any("必要人数" in error for error in validate_assignments(request_data, missing_judge))
     duplicated = result.assignments + [result.assignments[0]]
     assert any("兼任" in error for error in validate_assignments(request_data, duplicated))
+
+
+def test_shared_age_limit_is_used_by_solver_and_independent_validator(request_data):
+    original = solve(request_data)
+    request_data.options.judge_exempt_age = 25
+    assert any(
+        "資格制約" in error for error in validate_assignments(request_data, original.assignments)
+    )
+    result = solve(request_data)
+    assert result.status == "INFEASIBLE"
+    assert any("ジャッジ" in message and "候補者は0人" in message for message in result.diagnostics)
+    request_data.options.judge_exempt_age = 24
+    assert solve(request_data).status in ("OPTIMAL", "FEASIBLE")

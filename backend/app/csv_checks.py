@@ -109,6 +109,8 @@ def check_group_staffing(
     for person in results:
         for event_id, group in person.groups:
             max_groups[event_id] = max(max_groups[event_id], group)
+        for event_id, group in person.competitor_groups.items():
+            role_counts[event_id, group, ""].add(normalize_name(person.name))
         for role in person.roles:
             # Count people, not repeated tokens or duplicated CSV rows.
             role_counts[role.event_id, role.group, role.role].add(normalize_name(person.name))
@@ -116,29 +118,33 @@ def check_group_staffing(
     issues = []
     for event_id in event_ids:
         for group in range(1, max(max_groups[event_id], 1) + 1):
+            competitor_count = len(role_counts[event_id, group, ""])
             judge_count = len(role_counts[event_id, group, "J"])
+            required_count = min(competitor_count, num_stations)
             groups.append(
                 CsvGroupStaffing(
                     event_id=event_id,
                     group=group,
+                    competitor_count=competitor_count,
                     judge_count=judge_count,
                     scrambler_count=len(role_counts[event_id, group, "S"]),
                     runner_count=len(role_counts[event_id, group, "R"]),
-                    required_count=num_stations,
-                    passed=judge_count >= num_stations,
+                    required_count=required_count,
+                    passed=judge_count >= required_count,
                 )
             )
-            if judge_count < num_stations:
+            if judge_count < required_count:
                 issues.append(
                     CsvCheckIssue(
                         kind="staffing_shortage",
                         name=f"{event_id} G{group}",
                         event_id=event_id,
                         group=group,
-                        required_count=num_stations,
+                        required_count=required_count,
                         actual_count=judge_count,
-                        message=f"ジャッジ{judge_count}人 / 競技卓{num_stations}卓 "
-                        f"（{num_stations - judge_count}人不足）。",
+                        message=f"ジャッジ{judge_count}人 / 必要{required_count}人 "
+                        f"（競技者{competitor_count}人・競技卓{num_stations}卓、"
+                        f"{required_count - judge_count}人不足）。",
                     )
                 )
     return CsvCheckResult(
@@ -160,7 +166,9 @@ def check_csv(
     if options.participation or options.newcomers or options.age:
         if registration_csv is None:
             raise ImportError("選択したチェックには登録CSVが必要です。")
-        registrations = read_registrations(registration_csv)
+        registrations = read_registrations(
+            registration_csv, include_without_events=options.newcomers or options.age
+        )
     if options.newcomers and any(person.wca_id is None for person in registrations):
         raise ImportError("初参加者チェックには登録CSVのWCA ID列が必要です。")
     if options.age and any(person.birth_date is None for person in registrations):
@@ -169,7 +177,7 @@ def check_csv(
     checks = []
     if options.participation:
         participation = compare_participation(
-            [(person.name, person.events) for person in registrations],
+            [(person.name, person.events) for person in registrations if person.events],
             [(person.name, person.events) for person in results],
         )
         checks.append(

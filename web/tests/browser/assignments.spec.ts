@@ -29,6 +29,7 @@ test('sample solves entirely in-browser, exports CSV and checks it without an AP
   })
   page.on('pageerror', (error) => errors.push(error.message))
   await sample(page)
+  await page.getByLabel('競技卓数', { exact: true }).fill('2')
   expect(await page.evaluate(() => crossOriginIsolated)).toBe(true)
   const jspi = !forceAsyncify && await page.evaluate(() => typeof (WebAssembly as typeof WebAssembly & { promising?: unknown }).promising === 'function')
   await page.getByRole('button', { name: '役割分担を計算する', exact: true }).click()
@@ -43,8 +44,18 @@ test('sample solves entirely in-browser, exports CSV and checks it without an AP
   expect(result.toString('utf8')).toContain('J')
   await page.getByLabel('照合用の登録CSV（元CSV）', { exact: false }).setInputFiles(registration)
   await page.getByLabel('照合用の結果CSV', { exact: true }).setInputFiles({ name: 'result.csv', mimeType: 'text/csv', buffer: result })
+  await page.getByRole('switch', { name: '競技卓数に対するジャッジ人数' }).click()
   await page.getByRole('button', { name: '選択した項目をチェック' }).click()
   await expect(page.getByText('選択したすべてのチェックを通過しました。')).toBeVisible()
+  const check = page.getByRole('region', { name: 'CSVの割り当てをチェック' })
+  await expect(check.getByRole('columnheader', { name: '必要ジャッジ人数' })).toBeVisible()
+  for (const row of (await check.getByRole('row').all()).slice(1)) {
+    const cells = await row.getByRole('cell').allTextContents()
+    const required = Math.min(Number.parseInt(cells[0]), 2)
+    expect(cells[1]).toBe(`${required}人`)
+    expect(cells[2]).toBe(`${required}人`)
+    expect(cells[5]).toBe('OK')
+  }
   expect(apiCalls).toEqual([]); expect(errors).toEqual([])
   // A second solve must work after releasing the previous WASM workers.
   await page.getByRole('button', { name: '役割分担を計算する', exact: true }).click()

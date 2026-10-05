@@ -54,7 +54,7 @@ def staffing_requirements(request: SolveRequest, groups: dict) -> dict:
     return {
         (event.event_id, group): {
             Role.SCRAMBLER: event.num_scramblers_per_group,
-            Role.JUDGE: sizes[event.event_id, group],
+            Role.JUDGE: min(sizes[event.event_id, group], request.num_stations),
             Role.RUNNER: event.num_runners_per_group if event.use_runners else 0,
         }
         for event in request.events
@@ -139,6 +139,7 @@ def solve(request: SolveRequest) -> SolveResponse:
     started = time.monotonic()
     groups = assign_groups(request)
     requirements = staffing_requirements(request, groups)
+    group_sizes = Counter((event_id, group) for (_, event_id), group in groups.items())
     candidates = {}
     diagnostics = []
     warnings = []
@@ -153,7 +154,7 @@ def solve(request: SolveRequest) -> SolveResponse:
             )
         for group in range(event.num_groups):
             counts = requirements[event.event_id, group]
-            if counts[Role.JUDGE] > request.num_stations:
+            if group_sizes[event.event_id, group] > request.num_stations:
                 warnings.append(
                     f"{event.event_name} G{group + 1}: 競技者が競技卓数を超えています。"
                     "待機席が必要です。"

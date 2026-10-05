@@ -76,9 +76,12 @@ class ResultEntry:
     events: set[str]
     roles: list[CsvRoleAssignment]
     groups: set[tuple[str, int]]
+    competitor_groups: dict[str, int]
 
 
-def read_registrations(content: bytes) -> list[RegistrationEntry]:
+def read_registrations(
+    content: bytes, *, include_without_events: bool = False
+) -> list[RegistrationEntry]:
     columns, rows = read_csv_rows(content)
     if "Name" not in columns:
         raise ImportError("登録CSVに必要な列がありません: Name")
@@ -103,7 +106,7 @@ def read_registrations(content: bytes) -> list[RegistrationEntry]:
                 )
             if value == "1":
                 events.add(event_id)
-        if events:
+        if events or include_without_events:
             participants.append(
                 RegistrationEntry(
                     name=name,
@@ -136,6 +139,7 @@ def read_results(content: bytes) -> tuple[list[str], list[ResultEntry]]:
         events = set()
         roles = []
         groups = set()
+        competitor_groups = {}
         for event_id in event_ids:
             cell = row[event_id].strip()
             if not cell:
@@ -160,12 +164,22 @@ def read_results(content: bytes) -> tuple[list[str], list[ResultEntry]]:
                 groups.add((event_id, group))
                 if match[1]:
                     roles.append(CsvRoleAssignment(event_id=event_id, group=group, role=match[1]))
+                else:
+                    competitor_groups[event_id] = group
             if competition_groups > 1:
                 raise ImportError(
                     f"結果CSVの{row_number}行目（{name}）、{event_id}列: "
                     "競技グループが複数あります。数字のみの項目は1つにしてください。"
                 )
-        participants.append(ResultEntry(name=name, events=events, roles=roles, groups=groups))
+        participants.append(
+            ResultEntry(
+                name=name,
+                events=events,
+                roles=roles,
+                groups=groups,
+                competitor_groups=competitor_groups,
+            )
+        )
     return event_ids, participants
 
 

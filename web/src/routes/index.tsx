@@ -356,7 +356,7 @@ function AssignmentPage() {
                   })}</tbody>
                 </table>
               </div>
-              <p className="assignment-hint">ジャッジは各グループの競技者1人につき1人必要です。競技卓数を超えるグループには待機席が必要です。</p>
+              <p className="assignment-hint">ジャッジは各グループの競技者数と競技卓数の小さい方の人数を割り当てます。競技卓数を超えるグループには待機席が必要です。</p>
 
               <div className="assignment-section-heading">
                 <h3>参加者の役割条件</h3>

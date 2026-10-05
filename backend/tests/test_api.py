@@ -1,6 +1,8 @@
+import json
 from pathlib import Path
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 import app.main as main
@@ -47,6 +49,99 @@ def test_import_solve_and_csv_end_to_end():
         "matched_count": 12,
         "issues": [],
     }
+    all_checks = client.post(
+        "/api/check-csv",
+        files={
+            "registration_file": ("registration.csv", SAMPLE.read_bytes()),
+            "result_file": ("result.csv", result["csv_content"].encode("utf-8-sig")),
+        },
+        data={
+            "options": json.dumps(
+                {
+                    "participation": True,
+                    "newcomers": True,
+                    "age": True,
+                    "staffing": True,
+                    "competition_date": "2026-10-01",
+                    "age_limit": 12,
+                    "num_stations": 3,
+                }
+            )
+        },
+    )
+    assert all_checks.status_code == 200
+    assert all_checks.json()["passed"]
+    assert [check["key"] for check in all_checks.json()["checks"]] == [
+        "participation",
+        "newcomers",
+        "age",
+        "staffing",
+    ]
+
+
+@pytest.mark.parametrize(
+    "competitors, passed, required", [(1, True, 1), (2, False, 2), (3, False, 2)]
+)
+def test_csv_checks_api_caps_required_judges_without_registration_or_date(
+    competitors, passed, required
+):
+    result_csv = "Name,333\n" + "".join(f"Competitor {index},1\n" for index in range(competitors))
+    result_csv += "Judge,J1\n"
+    response = client.post(
+        "/api/check-csv",
+        files={"result_file": ("result.csv", result_csv.encode())},
+        data={"options": json.dumps({"participation": False, "staffing": True, "num_stations": 2})},
+    )
+    assert response.status_code == 200
+    assert response.json()["passed"] == passed
+    assert len(response.json()["checks"]) == 1
+    assert response.json()["checks"][0]["groups"][0]["judge_count"] == 1
+    assert response.json()["checks"][0]["groups"][0]["competitor_count"] == competitors
+    assert response.json()["checks"][0]["groups"][0]["required_count"] == required
+    if not passed:
+        assert response.json()["checks"][0]["issues"][0]["required_count"] == required
+
+
+def test_csv_checks_api_reports_all_role_types_and_shared_age_limit():
+    registered = "Name,333,Status,WCA ID,Birth Date\nYoung (母国語名),1,a,,2012-10-04\n"
+    response = client.post(
+        "/api/check-csv",
+        files={
+            "registration_file": ("registration.csv", registered.encode("utf-8-sig")),
+            "result_file": ("result.csv", b"Name,333\nYoung,1;J2;S3;R4\n"),
+        },
+        data={
+            "options": json.dumps(
+                {
+                    "participation": False,
+                    "newcomers": True,
+                    "age": True,
+                    "competition_date": "2026-10-04",
+                    "age_limit": 14,
+                }
+            )
+        },
+    )
+    assert response.status_code == 200
+    checks = response.json()["checks"]
+    assert [check["key"] for check in checks] == ["newcomers", "age"]
+    assert checks[1]["issues"][0]["age"] == 14
+    assert {role["role"] for role in checks[0]["issues"][0]["assignments"]} == {"J", "S", "R"}
+
+
+def test_csv_checks_api_rejects_missing_files_dates_and_invalid_options():
+    files = {"result_file": ("result.csv", b"Name,333\nA,1\n")}
+    for options in [
+        "not json",
+        "{}",
+        json.dumps({"age": True}),
+        json.dumps({"participation": False}),
+        json.dumps({"participation": False, "staffing": True, "num_stations": 0}),
+    ]:
+        assert (
+            client.post("/api/check-csv", files=files, data={"options": options}).status_code == 422
+        )
+    assert client.post("/api/check-csv").status_code == 422
 
 
 def test_check_participation_api_reports_missing_people_and_csv_errors():

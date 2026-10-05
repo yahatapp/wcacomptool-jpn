@@ -231,6 +231,7 @@ class CsvCheckIssue(ParticipationIssue):
 class CsvGroupStaffing(Model):
     event_id: str
     group: int
+    competitor_count: int
     judge_count: int
     scrambler_count: int
     runner_count: int

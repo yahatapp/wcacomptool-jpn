@@ -39,14 +39,17 @@ function eligible(person: Competitor, eventId: string, role: StaffRole, ageLimit
 }
 
 function staffingRequirements(request: SolveRequest, groups: Groups) {
-  return request.events.flatMap((event) => Array.from({ length: event.num_groups }, (_, group) => ({
-    event, group,
-    counts: {
-      SCRAMBLER: event.num_scramblers_per_group,
-      JUDGE: request.competitors.filter((person) => groups.get(key(person.competitor_id, event.event_id)) === group).length,
-      RUNNER: event.use_runners ? event.num_runners_per_group : 0,
-    },
-  })))
+  return request.events.flatMap((event) => Array.from({ length: event.num_groups }, (_, group) => {
+    const competitorCount = request.competitors.filter((person) => groups.get(key(person.competitor_id, event.event_id)) === group).length
+    return {
+      event, group, competitorCount,
+      counts: {
+        SCRAMBLER: event.num_scramblers_per_group,
+        JUDGE: Math.min(competitorCount, request.num_stations),
+        RUNNER: event.use_runners ? event.num_runners_per_group : 0,
+      },
+    }
+  }))
 }
 
 function increment(counts: Map<string, number>, id: string) { counts.set(id, (counts.get(id) ?? 0) + 1) }
@@ -95,8 +98,8 @@ export async function solve(request: SolveRequest, workerCount = 1): Promise<Sol
     const missing = request.competitors.filter((person) => Object.hasOwn(person.events, event.event_id) && person.events[event.event_id].average_time === null).length
     if (missing) result.warnings.push(`${event.event_name}: ${missing}人の平均記録が未入力です（未入力者は順位の末尾）。`)
   }
-  for (const { event, group, counts } of staffingRequirements(request, groups)) {
-    if (counts.JUDGE > request.num_stations) result.warnings.push(`${event.event_name} G${group + 1}: 競技者が競技卓数を超えています。待機席が必要です。`)
+  for (const { event, group, counts, competitorCount } of staffingRequirements(request, groups)) {
+    if (competitorCount > request.num_stations) result.warnings.push(`${event.event_name} G${group + 1}: 競技者が競技卓数を超えています。待機席が必要です。`)
     const uniqueCandidates = new Set<string>()
     for (const role of staffRoles) {
       const needed = counts[role]
