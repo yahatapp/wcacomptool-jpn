@@ -169,3 +169,24 @@ Webのテストは実際のWASMソルバーを使います。`backend/.venv/bin/
 ## Cloudflare Workers
 
 Cloudflare Vite PluginとWrangler設定を維持しています。`web/src/server.ts` がSSR HTMLに、`web/public/_headers` が静的ファイルにCOOP・COEPを設定します。計算はブラウザで実行するため、公開時にPython APIを配置する必要はありません。WASMを含むアセットは同じオリジンから配信します。
+
+## CI/CD
+
+[coffeelogのGitHub Actions](https://github.com/yahatapp/coffeelog/tree/main/.github/workflows)を参考に、Nix・固定したActionのコミットSHA・ロックファイルを使って実行環境と依存関係を揃えています。
+
+| ワークフロー | 実行条件 | 処理 |
+| --- | --- | --- |
+| `.github/workflows/ci.yml` | mainへのpush、main向けのドラフトではないPR | 共通の検証ワークフローを実行。新しい更新が来たら古いCIを中止 |
+| `.github/workflows/verify.yml` | CI・デプロイから呼び出し | Pythonのlint・テスト、WebのテストとPythonソルバーとの比較、依存関係監査、ビルド・型チェック、Wranglerのdry-run、ChromiumでのブラウザテストとAsyncifyの検証 |
+| `.github/workflows/deploy-web.yml` | mainへの実装・ワークフロー・Nix設定の変更、またはmainを指定した手動実行 | 共通の検証がすべて成功した後にWebをビルドし、Cloudflare Workersへデプロイ。本番デプロイを同時に実行しない |
+
+GitHubの[Settings → Environments](https://github.com/yahatapp/wcacomptool-jpn/settings/environments)で本番Environment `production` を使用します。Deployment branches and tagsでは、デプロイ可能なブランチを `main` に制限します。Environment secretsに以下を登録してください。
+
+| Secret | 内容 |
+| --- | --- |
+| `CLOUDFLARE_ACCOUNT_ID` | デプロイ先のCloudflareアカウントID |
+| `CLOUDFLARE_API_TOKEN` | 対象アカウントに限定した「Edit Cloudflare Workers」APIトークン |
+
+認証設定は[CloudflareのGitHub Actionsガイド](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)を参照してください。トークンはGitHub Secretsで管理します。CIと共通の検証ワークフローには渡さず、デプロイジョブの認証確認・デプロイのステップで使用します。未設定の場合はデプロイジョブが必要なSecret名を表示して失敗します。
+
+デプロイ対象は `web/wrangler.jsonc` の `wcacomptool-jpn-web` です。`pnpm --dir web deploy` はビルドから実行し、CI/CDではビルド後に `pnpm --dir web deploy:built` を実行します。Pythonバックエンドの公開やデータベースのマイグレーションは不要です。

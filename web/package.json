@@ -14,7 +14,8 @@
 		"test:browser": "playwright test",
 		"build": "vite build && pnpm run typecheck",
 		"preview": "pnpm run build && vite preview",
-		"deploy": "pnpm run build && wrangler deploy",
+		"deploy": "pnpm run build && pnpm run deploy:built",
+		"deploy:built": "wrangler deploy",
 		"cf-typegen": "wrangler types"
 	},
 	"dependencies": {

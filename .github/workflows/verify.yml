@@ -1,0 +1,59 @@
+name: Verify
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Verify implementation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      WRANGLER_SEND_METRICS: 'false'
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+
+      - name: Cache Nix store
+        uses: DeterminateSystems/magic-nix-cache-action@84c0677f58dcedf3b91f8223ce36a9ea5b3c84b7 # v15
+
+      - name: Install dependencies
+        run: |
+          nix develop --no-update-lock-file --command pnpm --dir web install --frozen-lockfile
+          nix develop --no-update-lock-file --command uv sync --project backend --locked
+
+      - name: Lint Python implementation
+        run: nix develop --no-update-lock-file --command uv run --project backend --locked ruff check backend/app backend/tests
+
+      - name: Test Python implementation
+        run: nix develop --no-update-lock-file --command uv run --project backend --locked pytest backend/tests
+
+      - name: Test Web implementation and Python solver parity
+        run: nix develop --no-update-lock-file --command pnpm --dir web test
+
+      - name: Audit production dependencies
+        run: nix develop --no-update-lock-file --command pnpm --dir web audit --prod --audit-level moderate
+
+      - name: Build Web application and check types
+        run: nix develop --no-update-lock-file --command pnpm --dir web build
+
+      - name: Validate Cloudflare deployment bundle
+        run: nix develop --no-update-lock-file --command pnpm --dir web exec wrangler deploy --dry-run
+
+      - name: Install Chromium and system dependencies
+        run: nix develop --no-update-lock-file --command pnpm --dir web exec playwright install --with-deps chromium
+
+      - name: Test browser workflows
+        run: nix develop --no-update-lock-file --command pnpm --dir web test:browser --reporter=github
+
+      - name: Test Asyncify fallback
+        env:
+          PLAYWRIGHT_DISABLE_JSPI: '1'
+        run: nix develop --no-update-lock-file --command pnpm --dir web test:browser --grep 'sample solves' --reporter=github
