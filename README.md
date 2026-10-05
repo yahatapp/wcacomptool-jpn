@@ -190,3 +190,15 @@ GitHubの[Settings → Environments](https://github.com/yahatapp/wcacomptool-jpn
 認証設定は[CloudflareのGitHub Actionsガイド](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)を参照してください。トークンはGitHub Secretsで管理します。CIと共通の検証ワークフローには渡さず、デプロイジョブの認証確認・デプロイのステップで使用します。未設定の場合はデプロイジョブが必要なSecret名を表示して失敗します。
 
 デプロイ対象は `web/wrangler.jsonc` の `wcacomptool-jpn-web` です。`pnpm --dir web deploy` はビルドから実行し、CI/CDではビルド後に `pnpm --dir web deploy:built` を実行します。Pythonバックエンドの公開やデータベースのマイグレーションは不要です。
+
+## Codex Cloud（レガシー）
+
+GitHubのコードレビューなどで利用する場合は、[Codexの環境設定](https://chatgpt.com/codex/settings/environments)でこのリポジトリを選び、Setup scriptに以下を設定してください。キャッシュ再利用時も依存関係を更新するには、Maintenance scriptにも同じコマンドを設定します。
+
+```sh
+bash .codex/setup.sh
+```
+
+スクリプトはNixが未導入のroot Linux環境では固定バージョンのインストーラーをSHA-256で検証して導入し、`flake.lock` の開発環境でWeb・比較用Pythonの依存関係とPlaywrightのChromium・システム依存をインストールします。各ロックファイルを更新せず、OR-Toolsの読み込みとChromiumのヘッドレス起動も確認します。
+
+[セットアップとエージェントは別のBashセッションで動く](https://learn.chatgpt.com/docs/environments/cloud-environment#manual-setup)ため、開発環境を `~/.cache/wcacomptool-jpn-nix-env.sh` に保存し、`~/.bashrc` から読み込みます。レビュー中は「検証」のコマンドをそのまま実行できます。
