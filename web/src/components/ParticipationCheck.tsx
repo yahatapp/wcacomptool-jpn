@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { Dispatch, FormEvent, SetStateAction } from 'react'
 import { FileCheck2, LoaderCircle } from 'lucide-react'
 import { Button } from './ui/button'
 import { Card } from './ui/card'
@@ -7,6 +7,8 @@ import { Input } from './ui/input'
 import { Switch } from './ui/switch'
 import { checkCsv, csvCheckLabels } from '../lib/assignments'
 import type { CsvCheckKey, CsvCheckResponse, CsvCheckResult, CsvCheckSelection } from '../lib/assignments'
+import type { WorkspaceSession } from './useWorkspace'
+import type { WorkspaceState } from '../lib/workspace-storage'
 
 type CheckProps = {
   competitionDate: string
@@ -16,6 +18,11 @@ type CheckProps = {
   onDateChange: (value: string) => void
   onAgeLimitChange: (value: number) => void
   onStationsChange: (value: number) => void
+  workspaceId: string
+  session: WorkspaceSession
+  savedState: WorkspaceState['checker']
+  onSavedStateChange: Dispatch<SetStateAction<WorkspaceState['checker']>>
+  onBusyChange: (busy: boolean) => void
 }
 
 function CheckResult({ check }: { check: CsvCheckResult }) {
@@ -59,12 +66,12 @@ function CheckResult({ check }: { check: CsvCheckResult }) {
 
 export default function ParticipationCheck({
   competitionDate, ageLimit, numStations, disabled, onDateChange, onAgeLimitChange, onStationsChange,
+  workspaceId, session, savedState, onSavedStateChange, onBusyChange,
 }: CheckProps) {
   const [registrationFile, setRegistrationFile] = useState<File | null>(null)
   const [resultFile, setResultFile] = useState<File | null>(null)
-  const [selection, setSelection] = useState<CsvCheckSelection>({
-    participation: true, newcomers: false, age: false, staffing: false,
-  })
+  const selection: CsvCheckSelection = savedState.selection
+  const [loadingFiles, setLoadingFiles] = useState(false)
   const [checking, setChecking] = useState(false)
   const [result, setResult] = useState<CsvCheckResponse | null>(null)
   const [error, setError] = useState('')
@@ -76,7 +83,38 @@ export default function ParticipationCheck({
 
   useEffect(() => {
     invalidate()
-  }, [competitionDate, ageLimit, numStations])
+  }, [competitionDate, ageLimit, numStations, selection])
+
+  const { readFile } = session
+  useEffect(() => {
+    let cancelled = false
+    setLoadingFiles(true); invalidate()
+    void Promise.all([
+      savedState.registrationFileId ? readFile(workspaceId, savedState.registrationFileId) : null,
+      savedState.resultFileId ? readFile(workspaceId, savedState.resultFileId) : null,
+    ]).then(([registration, result]) => {
+      if (!cancelled) { setRegistrationFile(registration); setResultFile(result) }
+    }).catch((cause) => {
+      if (!cancelled) setError(cause instanceof Error ? cause.message : '保存済みCSVを開けませんでした。')
+    }).finally(() => { if (!cancelled) setLoadingFiles(false) })
+    return () => { cancelled = true }
+  }, [workspaceId, readFile, savedState.registrationFileId, savedState.resultFileId])
+
+  useEffect(() => {
+    onBusyChange(checking || loadingFiles)
+    return () => onBusyChange(false)
+  }, [checking, loadingFiles, onBusyChange])
+
+  async function uploadFile(kind: 'registrationFileId' | 'resultFileId', file: File | null) {
+    invalidate()
+    if (!file) { onSavedStateChange((current) => ({ ...current, [kind]: null })); return }
+    setLoadingFiles(true)
+    try {
+      const stored = await session.addCsv(workspaceId, file)
+      onSavedStateChange((current) => ({ ...current, [kind]: stored.id }))
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'CSVを保存できませんでした。') }
+    finally { setLoadingFiles(false) }
+  }
 
   async function runCheck(event: FormEvent) {
     event.preventDefault()
@@ -107,12 +145,14 @@ export default function ParticipationCheck({
     <h2 id="check-title"><FileCheck2 size={22} aria-hidden="true" />CSVの割り当てをチェック</h2>
     <p className="assignment-hint">チェックしたい項目をオンにして、CSVを選んでください。割り当ての計算なしでも使えます。</p>
     <form onSubmit={(event) => { void runCheck(event) }}>
-      <fieldset disabled={checking || disabled}>
+      <fieldset disabled={checking || loadingFiles || disabled}>
         <div className="csv-check-options" aria-label="チェック項目">
           {(Object.keys(csvCheckLabels) as CsvCheckKey[]).map((key) => <label className="csv-check-option" key={key} htmlFor={`csv-check-${key}`}>
             <Switch id={`csv-check-${key}`} disabled={checking || disabled}
               aria-label={csvCheckLabels[key]} checked={selection[key]}
-              onCheckedChange={(checked) => { setSelection({ ...selection, [key]: checked }); invalidate() }} />
+              onCheckedChange={(checked) => {
+                onSavedStateChange((current) => ({ ...current, selection: { ...current.selection, [key]: checked } })); invalidate()
+              }} />
             <span><strong>{csvCheckLabels[key]}</strong><small>{hints[key]}</small></span>
           </label>)}
         </div>
@@ -137,16 +177,34 @@ export default function ParticipationCheck({
         </>}
         <div className="assignment-form-grid csv-check-files">
           <label>照合用の登録CSV（元CSV）{!needsRegistration && '・卓数チェックだけなら不要'}
-            <Input className="assignment-input" type="file" accept=".csv,text/csv"
-              required={needsRegistration} onChange={(event) => {
-                setRegistrationFile(event.target.files?.[0] ?? null); invalidate()
+            <Input className="assignment-input" type="file" accept=".csv,text/csv" aria-label="照合用の登録CSV（元CSV）"
+              required={needsRegistration && !registrationFile} onChange={(event) => {
+                void uploadFile('registrationFileId', event.target.files?.[0] ?? null)
               }} />
+            <select className="assignment-input" aria-label="保存済みの登録CSVを選ぶ"
+              value={savedState.registrationFileId ?? ''} onChange={(event) => {
+                const id = event.target.value || null
+                onSavedStateChange((current) => ({ ...current, registrationFileId: id }))
+              }}>
+              <option value="">保存済みCSVから選択</option>
+              {session.loaded!.record.files.map((file) => <option key={file.id} value={file.id}>{file.name}</option>)}
+            </select>
+            {registrationFile && <small className="assignment-muted">使用中：{registrationFile.name}</small>}
           </label>
           <label>照合用の結果CSV
-            <Input className="assignment-input" type="file" accept=".csv,text/csv"
-              required onChange={(event) => {
-                setResultFile(event.target.files?.[0] ?? null); invalidate()
+            <Input className="assignment-input" type="file" accept=".csv,text/csv" aria-label="照合用の結果CSV"
+              required={!resultFile} onChange={(event) => {
+                void uploadFile('resultFileId', event.target.files?.[0] ?? null)
               }} />
+            <select className="assignment-input" aria-label="保存済みの結果CSVを選ぶ"
+              value={savedState.resultFileId ?? ''} onChange={(event) => {
+                const id = event.target.value || null
+                onSavedStateChange((current) => ({ ...current, resultFileId: id }))
+              }}>
+              <option value="">保存済みCSVから選択</option>
+              {session.loaded!.record.files.map((file) => <option key={file.id} value={file.id}>{file.name}</option>)}
+            </select>
+            {resultFile && <small className="assignment-muted">使用中：{resultFile.name}</small>}
           </label>
         </div>
         <div className="assignment-actions">
@@ -160,7 +218,7 @@ export default function ParticipationCheck({
       </fieldset>
     </form>
     <p className="assignment-hint">結果CSVはName列と競技IDの列を使います。数字のみは競技グループ、Jはジャッジ、Sはスクランブラー、Rはランナーです。</p>
-    <p className="assignment-hint">登録CSVの名前は「(」より前の英語名で照合します。名前の前後・連続する空白をそろえ、同名の行は照合できないため表示します。CSVは保存しません。</p>
+    <p className="assignment-hint">登録CSVの名前は「(」より前の英語名で照合します。名前の前後・連続する空白をそろえ、同名の行は照合できないため表示します。選択したCSVとチェック項目は、この大会に保存します。</p>
     {error && <div className="assignment-notice assignment-notice-danger" role="alert">
       <p className="whitespace-pre-wrap">{error}</p>
     </div>}
