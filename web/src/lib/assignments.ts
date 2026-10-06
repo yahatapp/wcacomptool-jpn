@@ -210,10 +210,14 @@ export function mergeWcaRecords(person: Competitor, records: WcaRecordsResponse[
 }
 
 export function downloadCsv(content: string, filename: string) {
-  const url = URL.createObjectURL(new Blob(['\uFEFF', content], { type: 'text/csv;charset=utf-8' }))
+  downloadFile(new File(['\uFEFF', content.replace(/^\uFEFF/, '')], filename, { type: 'text/csv;charset=utf-8' }))
+}
+
+export function downloadFile(file: File) {
+  const url = URL.createObjectURL(file)
   const link = document.createElement('a')
   link.href = url
-  link.download = filename
+  link.download = file.name
   document.body.appendChild(link)
   link.click()
   link.remove()

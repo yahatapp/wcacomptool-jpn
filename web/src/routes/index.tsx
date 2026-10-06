@@ -1,8 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
-import { Check, Download, FlaskConical, LoaderCircle, Play, Upload } from 'lucide-react'
+import { Check, Download, FlaskConical, FolderOpen, LoaderCircle, Play, Plus, Trash2, Upload } from 'lucide-react'
 import ParticipationCheck from '../components/ParticipationCheck'
+import WorkspaceFiles from '../components/WorkspaceFiles'
+import { useWorkspace } from '../components/useWorkspace'
+import type { WorkspaceSession } from '../components/useWorkspace'
 import { Button } from '../components/ui/button'
 import { Card } from '../components/ui/card'
 import { Input } from '../components/ui/input'
@@ -10,6 +13,7 @@ import {
   ApiError, downloadCsv, fetchWcaRecords, importRegistration, mergeWcaRecords,
   normalizedWcaId, roleLabels, solveAssignments,
 } from '../lib/assignments'
+import type { WorkspaceResult, WorkspaceState } from '../lib/workspace-storage'
 import type {
   Competitor, EventConfig, ImportResponse, PersonalRecord, Role, SolveResponse, SolverOptions,
 } from '../lib/assignments'
@@ -48,22 +52,78 @@ function Notice({ children, danger = false }: { children: ReactNode; danger?: bo
 }
 
 function AssignmentPage() {
+  const session = useWorkspace()
+  const [editingBusy, setEditingBusy] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const record = session.loaded?.record
+  return <main id="main-content" className="page-wrap assignment-page">
+    <div className="assignment-heading">
+      <p className="page-eyebrow">大会運営ツール</p>
+      <h1>大会の役割分担をつくる</h1>
+      <p className="assignment-muted">WCAの参加者CSVを読み込み、グループ・スクランブラー・ジャッジ・ランナーを割り当てます。</p>
+      <p className="assignment-hint">大会ごとのCSV・設定・結果を、このブラウザに保存して作業を続けられます。</p>
+    </div>
+    <Card className="assignment-panel workspace-panel" role="region" aria-labelledby="workspace-title">
+      <h2 id="workspace-title"><FolderOpen aria-hidden="true" />大会ワークスペース</h2>
+      <div className="workspace-toolbar">
+        <label>保存した大会
+          <select className="assignment-input" aria-label="保存した大会" value={record?.id ?? ''}
+            disabled={session.loading || editingBusy || !record} onChange={(event) => {
+              setConfirmDelete(false); void session.openWorkspace(event.target.value)
+            }}>
+            {!record && <option value="">大会を読み込み中…</option>}
+            {session.workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>
+              {workspace.state.competition_name || '新しい大会'}{workspace.state.competition_date && ` / ${workspace.state.competition_date}`}
+            </option>)}
+          </select>
+        </label>
+        <Button type="button" variant="outline" disabled={session.loading || editingBusy || !!session.error}
+          onClick={() => { setConfirmDelete(false); void session.openWorkspace(null) }}><Plus aria-hidden="true" />大会を追加</Button>
+        <Button type="button" variant="ghost" disabled={session.loading || editingBusy || !record || session.conflict}
+          onClick={() => setConfirmDelete(true)}><Trash2 aria-hidden="true" />大会を削除</Button>
+      </div>
+      <p className="assignment-hint" role="status">{session.loading ? '大会を読み込み中…' : session.error ? '未保存' : session.saving ? '保存中…' : '保存済み'}</p>
+      <p className="assignment-hint">保存内容はこの端末・ブラウザのプロファイルに保持されます。サイトデータを削除すると消えるため、必要なCSVはダウンロードしてください。</p>
+      {session.persistent === false && <p className="assignment-hint">ブラウザによる自動削除からの保護は未許可です。保存自体は利用できます。</p>}
+      {session.error && <Notice danger><p>{session.error}</p>
+        {!session.conflict && <Button type="button" variant="outline" onClick={() => { void session.retry() }}>保存を再試行</Button>}
+      </Notice>}
+      {confirmDelete && <div className="assignment-notice assignment-notice-danger">
+        <p>この大会のCSV・設定・結果履歴をすべて削除します。この操作は取り消せません。</p>
+        <div className="assignment-actions">
+          <Button type="button" variant="destructive" disabled={session.loading || editingBusy}
+            onClick={() => { setConfirmDelete(false); void session.deleteWorkspace() }}>この大会を削除する</Button>
+          <Button type="button" variant="outline" onClick={() => setConfirmDelete(false)}>キャンセル</Button>
+        </div>
+      </div>}
+    </Card>
+    {session.loaded && <AssignmentEditor key={session.loaded.record.id} session={session} onBusyChange={setEditingBusy} />}
+  </main>
+}
+
+function AssignmentEditor({ session, onBusyChange }: { session: WorkspaceSession; onBusyChange: (busy: boolean) => void }) {
+  const initial = session.loaded!
+  const workspaceId = initial.record.id
+  const initialState = initial.record.state
   const fileInput = useRef<HTMLInputElement>(null)
   const recordsControl = useRef<{ stop: boolean; controller: AbortController } | null>(null)
   const solverControl = useRef<AbortController | null>(null)
-  const [file, setFile] = useState<File | null>(null)
+  const [file, setFile] = useState<File | null>(initialState.registrationFileId ? initial.files[initialState.registrationFileId] ?? null : null)
+  const [registrationFileId, setRegistrationFileId] = useState(initialState.registrationFileId)
+  const [resultFileId, setResultFileId] = useState(initialState.resultFileId)
+  const [checker, setChecker] = useState(initialState.checker)
+  const [fileBusy, setFileBusy] = useState(false)
+  const [checkBusy, setCheckBusy] = useState(false)
   const [browserReady, setBrowserReady] = useState(false)
-  const [competitionDate, setCompetitionDate] = useState('')
-  const [competitionName, setCompetitionName] = useState('')
-  const [numStations, setNumStations] = useState(20)
-  const [imported, setImported] = useState<ImportResponse | null>(null)
-  const [events, setEvents] = useState<EventConfig[]>([])
-  const [competitors, setCompetitors] = useState<Competitor[]>([])
-  const [options, setOptions] = useState<SolverOptions>({
-    time_limit_seconds: 30, scrambler_speed_weight: 100, balance_weight: 50, judge_exempt_age: 12,
-  })
+  const [competitionDate, setCompetitionDate] = useState(initialState.competition_date)
+  const [competitionName, setCompetitionName] = useState(initialState.competition_name)
+  const [numStations, setNumStations] = useState(initialState.num_stations)
+  const [imported, setImported] = useState<ImportResponse | null>(initialState.imported)
+  const [events, setEvents] = useState<EventConfig[]>(initialState.events)
+  const [competitors, setCompetitors] = useState<Competitor[]>(initialState.competitors)
+  const [options, setOptions] = useState<SolverOptions>(initialState.options)
   const [busy, setBusy] = useState<'import' | 'solve' | 'records' | null>(null)
-  const [overwriteRecords, setOverwriteRecords] = useState(false)
+  const [overwriteRecords, setOverwriteRecords] = useState(initialState.overwriteRecords ?? false)
   const [recordProgress, setRecordProgress] = useState<RecordProgress | null>(null)
   const [recordsStopping, setRecordsStopping] = useState(false)
   const [error, setError] = useState('')
@@ -81,13 +141,61 @@ function AssignmentPage() {
     }
   }, [])
 
-  function invalidate() { setResult(null); setError('') }
+  // Read CSV contents separately: IndexedDB holds settings and file references,
+  // while the original CSV bytes and generated CSVs live in OPFS.
+  const [restoring, setRestoring] = useState(true)
+  useEffect(() => {
+    let cancelled = false
+    const restore = async () => {
+      const csv = initialState.resultFileId ? await initial.files[initialState.resultFileId]?.text() ?? '' : ''
+      if (!cancelled) {
+        setResult(initialState.result ? { ...initialState.result, csv_content: csv.replace(/^\uFEFF/, '') } : null)
+        setRecordEvent(initialState.events[0]?.event_id ?? '')
+        setRestoring(false)
+      }
+    }
+    void restore().catch((cause) => { if (!cancelled) { setError(String(cause)); setRestoring(false) } })
+    return () => { cancelled = true }
+    // This editor is remounted when the selected workspace changes.
+  }, [])
 
-  async function readFile(selected: File, date: string) {
+  const { saveState } = session
+  useEffect(() => {
+    if (restoring) return
+    const canStoreResult = result && (!result.csv_content || resultFileId)
+    const storedResult = canStoreResult ? (({ csv_content: _csv, ...response }) => response)(result) : null
+    void saveState(workspaceId, {
+      competition_name: competitionName, competition_date: competitionDate, num_stations: numStations,
+      imported, events, competitors, options, overwriteRecords, registrationFileId, resultFileId,
+      result: storedResult, checker,
+    })
+  }, [saveState, workspaceId, restoring, competitionName, competitionDate, numStations,
+    imported, events, competitors, options, overwriteRecords, registrationFileId, result, resultFileId, checker])
+
+  useEffect(() => {
+    onBusyChange(busy !== null || fileBusy || checkBusy || restoring)
+    return () => onBusyChange(false)
+  }, [busy, fileBusy, checkBusy, restoring, onBusyChange])
+
+  function workspaceState(): WorkspaceState {
+    return {
+      competition_name: competitionName, competition_date: competitionDate, num_stations: numStations,
+      imported, events, competitors, options, overwriteRecords, registrationFileId, resultFileId: null, result: null, checker,
+    }
+  }
+
+  function invalidate() { setResult(null); setResultFileId(null); setError('') }
+
+  async function readFile(selected: File, date: string, savedId?: string) {
     setBusy('import'); setError(''); setResult(null); setImported(null)
     setRecordProgress(null)
     try {
       const data = await importRegistration(selected, date)
+      const entry = savedId ? null : await session.addCsv(workspaceId, selected)
+      const id = savedId ?? entry!.id
+      setRegistrationFileId(id)
+      setChecker((current) => ({ ...current, registrationFileId: id }))
+      setResultFileId(null)
       setImported(data)
       setCompetitors(data.competitors)
       setEvents(data.events.map((event) => ({
@@ -105,7 +213,7 @@ function AssignmentPage() {
 
   async function importFile(event: FormEvent) {
     event.preventDefault()
-    if (file && competitionDate) await readFile(file, competitionDate)
+    if (file && competitionDate) await readFile(file, competitionDate, registrationFileId ?? undefined)
   }
 
   async function trySample() {
@@ -152,7 +260,15 @@ function AssignmentPage() {
         competition_name: competitionName, competition_date: competitionDate,
         num_stations: numStations, events, competitors, options,
       }, controller.signal)
-      setResult(response)
+      let savedFileId: string | null = null
+      if ((response.status === 'OPTIMAL' || response.status === 'FEASIBLE') && response.csv_content) {
+        try {
+          const saved = await session.saveResult(workspaceId, response, workspaceState())
+          savedFileId = saved.fileId
+          setChecker((current) => ({ ...current, resultFileId: saved.fileId }))
+        } catch { /* The workspace panel reports the failure; the result remains downloadable. */ }
+      }
+      setResult(response); setResultFileId(savedFileId)
     } catch (cause) {
       if (!(cause instanceof Error && cause.name === 'AbortError')) {
         setError(cause instanceof Error ? cause.message : '役割分担の計算に失敗しました。')
@@ -246,14 +362,40 @@ function AssignmentPage() {
   const solved = result?.status === 'OPTIMAL' || result?.status === 'FEASIBLE'
   const currentStep = solved ? 3 : imported ? 2 : 1
 
+  async function selectRegistration(id: string) {
+    setFileBusy(true); setError('')
+    try {
+      const selected = await session.readFile(workspaceId, id)
+      setFile(selected); setRegistrationFileId(id); setImported(null); invalidate()
+      if (fileInput.current) fileInput.current.value = ''
+    } finally { setFileBusy(false) }
+  }
+
+  async function openHistory(history: WorkspaceResult) {
+    setFileBusy(true); setError('')
+    try {
+      const state = history.state
+      const source = state.registrationFileId ? await session.readFile(workspaceId, state.registrationFileId) : null
+      const csv = await (await session.readFile(workspaceId, history.fileId)).text()
+      setFile(source); setRegistrationFileId(state.registrationFileId)
+      setCompetitionName(state.competition_name); setCompetitionDate(state.competition_date)
+      setNumStations(state.num_stations); setImported(state.imported)
+      setEvents(state.events); setCompetitors(state.competitors); setOptions(state.options)
+      setOverwriteRecords(state.overwriteRecords ?? false)
+      setResult({ ...history.result, csv_content: csv.replace(/^\uFEFF/, '') }); setResultFileId(history.fileId)
+      setChecker({ ...state.checker, registrationFileId: state.registrationFileId, resultFileId: history.fileId })
+      setRecordEvent(state.events[0]?.event_id ?? ''); setRecordProgress(null)
+      setParticipantSearch(''); setResultEvent(''); setResultSearch('')
+      if (fileInput.current) fileInput.current.value = ''
+    } finally { setFileBusy(false) }
+  }
+
   return (
-    <main id="main-content" className="page-wrap assignment-page">
-      <div className="assignment-heading">
-        <p className="page-eyebrow">大会運営ツール</p>
-        <h1>大会の役割分担をつくる</h1>
-        <p className="assignment-muted">WCAの参加者CSVを読み込み、グループ・スクランブラー・ジャッジ・ランナーを割り当てます。</p>
-        <p className="assignment-hint">CSVの読み込み・チェック・役割分担の計算は、このブラウザ内で行います。</p>
-      </div>
+    <fieldset disabled={session.loading || fileBusy || restoring}>
+      <label className="workspace-name">大会の表示名
+        <Input className="assignment-input" aria-label="大会の表示名" value={competitionName} maxLength={200}
+          onChange={(event) => { setCompetitionName(event.target.value); invalidate() }} />
+      </label>
 
       <ol className="assignment-steps" aria-label="役割分担の作成手順">
         {['参加者の読み込み', '大会・参加者の設定', '結果の確認・保存'].map((label, index) => {
@@ -274,7 +416,7 @@ function AssignmentPage() {
               <label>登録CSV
                 <Input ref={fileInput} className="assignment-input" type="file" accept=".csv,text/csv"
                   aria-label="登録CSV" onChange={(event) => {
-                    setFile(event.target.files?.[0] ?? null); setImported(null); invalidate()
+                    setFile(event.target.files?.[0] ?? null); setRegistrationFileId(null); setImported(null); invalidate()
                   }} />
               </label>
               <label>大会日（年齢の計算基準）
@@ -519,11 +661,15 @@ function AssignmentPage() {
           </>}
         </Card>}
       </>}
+      <WorkspaceFiles session={session} disabled={busy !== null || checkBusy || session.loading}
+        onRegistration={selectRegistration} onHistory={openHistory} onBusyChange={setFileBusy} />
       <ParticipationCheck competitionDate={competitionDate} ageLimit={options.judge_exempt_age}
         numStations={numStations} disabled={busy !== null}
+        workspaceId={workspaceId} session={session} savedState={checker} onSavedStateChange={setChecker}
+        onBusyChange={setCheckBusy}
         onDateChange={(value) => { setCompetitionDate(value); setImported(null); invalidate() }}
         onAgeLimitChange={(value) => { setOptions({ ...options, judge_exempt_age: value }); invalidate() }}
         onStationsChange={(value) => { setNumStations(value); invalidate() }} />
-    </main>
+    </fieldset>
   )
 }

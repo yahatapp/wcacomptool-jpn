@@ -163,6 +163,18 @@ select.assignment-input { width: 100%; padding: 0.5rem 2rem 0.5rem 0.75rem; bord
 .about-content > p { margin-block: 1rem; font-size: 0.9rem; }
 .about-content .assignment-warning-list { margin-block: 1.5rem; padding: 1rem 1rem 1rem 2.5rem; border-radius: 0.625rem; background: var(--muted); }
 .about-content .assignment-actions a { text-decoration: none; }
+.workspace-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 0.75rem; }
+.workspace-toolbar > label { display: grid; gap: 0.5rem; flex: 1; min-width: min(100%, 18rem); font-size: 0.85rem; }
+.workspace-toolbar button { min-height: 2.75rem; }
+.workspace-name, .workspace-upload { display: grid; gap: 0.5rem; font-size: 0.85rem; max-width: 36rem; }
+.workspace-file-list { margin: 1rem 0; padding: 0; list-style: none; }
+.workspace-file-list > li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 1rem 0; border-bottom: 1px solid var(--border); }
+.workspace-file-list strong { font-size: 0.85rem; font-weight: 500; }
+.workspace-file-list small { display: block; color: var(--muted-foreground); font-size: 0.75rem; }
+.workspace-file-list > li > div:first-child { flex: 1; min-width: 0; }
+.workspace-file-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.workspace-file-actions button { height: auto; min-height: 2.25rem; white-space: normal; }
+.workspace-file-list + h3 { display: flex; align-items: center; gap: 0.5rem; }
 
 @media (max-width: 880px) {
   .header-content { flex-wrap: wrap; }
