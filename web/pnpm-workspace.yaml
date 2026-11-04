@@ -3,3 +3,7 @@ allowBuilds:
   lightningcss: true
   sharp: true
   workerd: true
+
+# Some transitive dependencies pin vulnerable Seroval versions exactly.
+overrides:
+  seroval: ^1.7.7
